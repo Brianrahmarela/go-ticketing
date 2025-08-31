@@ -11,7 +11,8 @@ import (
 
 type TicketService interface {
 	BuyTicket(userID uint, eventID uint, quantity uint) (*models.Ticket, error)
-	CancelTicket(ticketID uint, userID uint) error
+	CancelTicket(ticketID uint, userID uint, role string) error
+	GetTicketsByUser(userID uint) ([]models.Ticket, error)
 }
 
 type ticketService struct {
@@ -83,11 +84,17 @@ func (s *ticketService) BuyTicket(userID uint, eventID uint, quantity uint) (*mo
 	return ticket, nil
 }
 
-func (s *ticketService) CancelTicket(ticketID uint, userID uint) error {
+func (s *ticketService) GetTicketsByUser(userID uint) ([]models.Ticket, error) {
+	return s.ticketRepo.FindByUser(userID)
+}
+
+func (s *ticketService) CancelTicket(ticketID uint, userID uint, role string) error {
 	tx := s.db.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
 
 	ticket, err := s.ticketRepo.FindByIDForUpdate(tx, ticketID)
 	if err != nil {
@@ -95,31 +102,32 @@ func (s *ticketService) CancelTicket(ticketID uint, userID uint) error {
 		return err
 	}
 
-	if ticket.UserID != userID {
+	if role != "admin" && ticket.UserID != userID {
 		tx.Rollback()
-		return errors.New("not authorized to cancel this ticket")
-	}
-	if ticket.Status != "purchased" {
-		tx.Rollback()
-		return errors.New("ticket already cancelled or invalid")
+		return errors.New("unauthorized: not your ticket")
 	}
 
-	// update ticket
+	if ticket.Status != "purchased" {
+		tx.Rollback()
+		return errors.New("cannot cancel this ticket")
+	}
+
 	ticket.Status = "cancelled"
 	if err := s.ticketRepo.Update(tx, ticket); err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// kembalikan kursi
 	event, err := s.eventRepo.FindByIDForUpdate(tx, ticket.EventID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	event.Sold -= ticket.Quantity
 
-	// kalau ada kursi kosong lagi, ubah status ke Active
+	if event.Sold >= ticket.Quantity {
+		event.Sold -= ticket.Quantity
+	}
+
 	if event.Status == "SoldOut" && event.Sold < event.Capacity {
 		event.Status = "Active"
 	}

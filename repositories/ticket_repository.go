@@ -86,3 +86,8 @@ func (r *ticketRepository) Update(tx *gorm.DB, ticket *models.Ticket) error {
 	}
 	return r.db.Save(ticket).Error
 }
+func (r *ticketRepository) FindByUserID(userID uint) ([]models.Ticket, error) {
+	var tickets []models.Ticket
+	err := r.db.Where("user_id = ?", userID).Find(&tickets).Error
+	return tickets, err
+}

@@ -10,14 +10,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// SetupRoutes daftar semua endpoint
 func SetupRoutes(router *gin.Engine, db *gorm.DB) {
 	api := router.Group("/api/v1")
 
-	// auth routes (registrasi, login, dsb.)
 	SetupAuthRoutes(api, db)
 
-	// --------- Protected routes (butuh JWT) ---------
+	// Protected routes
 	protected := api.Group("/")
 	protected.Use(middleware.AuthMiddleware())
 
@@ -28,8 +26,8 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB) {
 	ticketCtrl := controllers.NewTicketController(ticketService)
 
 	protected.POST("/tickets", ticketCtrl.BuyTicket)
+	protected.GET("/tickets", ticketCtrl.GetMyTickets)
 	protected.DELETE("/tickets/:id", ticketCtrl.CancelTicket)
-	// protected.GET("/tickets", ticketCtrl.GetMyTickets)
 
 	// === Event setup ===
 	eventRepo2 := repositories.NewEventRepository(db)
